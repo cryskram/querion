@@ -2,8 +2,10 @@
 /**
  * Bulk-sync pi sessions to Querion from the command line.
  *
- *   npm run sync:sessions                 # sync all sessions
- *   npm run sync:sessions -- morphix      # only paths containing "morphix"
+ *   npm run sync:sessions                      # sync all sessions
+ *   npm run sync:sessions -- morphix           # only paths containing "morphix"
+ *   npm run sync:sessions -- <session-id>      # a specific session id
+ *   npm run sync:sessions -- ~/x/session.jsonl # a specific file
  *   QUERION_URL=… QUERION_SYNC_TOKEN=… node scripts/sync-sessions.mjs
  *
  * Configuration resolves from (in order): process env, ~/.config/querion/config.json,
@@ -252,12 +254,16 @@ async function push(config, envelope, sourceFile) {
 
 async function main() {
   const config = resolveConfig();
-  const filter = process.argv.slice(2).join(" ").trim() || undefined;
+  const raw = process.argv.slice(2).join(" ").trim();
+  const query = raw.startsWith("~/") ? join(homedir(), raw.slice(2)) : raw;
   const root = process.env.PI_SESSION_DIR || join(homedir(), ".pi", "agent", "sessions");
-  const files = walk(root, filter);
+
+  // An explicit .jsonl path syncs exactly that file; anything else is a filter.
+  const files =
+    query && query.endsWith(".jsonl") && existsSync(query) ? [query] : walk(root, query || undefined);
 
   if (files.length === 0) {
-    console.error(`No sessions found under ${root}${filter ? ` matching "${filter}"` : ""}.`);
+    console.error(`No sessions found under ${root}${query ? ` matching "${query}"` : ""}.`);
     process.exit(1);
   }
 

@@ -73,6 +73,7 @@ config file is read directly and takes effect immediately after
 | Command | Action |
 |---|---|
 | `/sync` | sync the current session |
+| `/sync <id\|path>` | sync one session by id, `.jsonl` path, or path substring |
 | `/sync all` | sync every session under `~/.pi/agent/sessions` (or `$PI_SESSION_DIR`) |
 | `/sync all <text>` | only sessions whose path contains `<text>` |
 | `/sync status` | print resolved config and server health |

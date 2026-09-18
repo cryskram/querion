@@ -12,6 +12,7 @@
  *
  * Usage inside pi:
  *   /sync              sync the current session
+ *   /sync <id|path>    sync one session by id, .jsonl path, or path substring
  *   /sync all          sync every session in ~/.pi/agent/sessions
  *   /sync all <text>   sync sessions whose path contains <text>
  *   /sync status       show resolved config + server health
@@ -362,6 +363,31 @@ function walkSessionFiles(root: string, filter?: string): string[] {
   return found;
 }
 
+function sortByMtime(files: string[]): string[] {
+  return files
+    .map((path) => {
+      let mtime = 0;
+      try {
+        mtime = statSync(path).mtimeMs;
+      } catch {
+        // ignore unreadable files
+      }
+      return { path, mtime };
+    })
+    .sort((a, b) => b.mtime - a.mtime)
+    .map((entry) => entry.path);
+}
+
+/** Resolve a `/sync <query>` argument to session files (path, id, or substring). */
+function resolveSessionFiles(query: string, cwd: string, root: string): string[] {
+  const expanded = query.startsWith("~/") ? join(homedir(), query.slice(2)) : query;
+  for (const candidate of [expanded, join(cwd, expanded)]) {
+    if (candidate.endsWith(".jsonl") && existsSync(candidate)) return [candidate];
+  }
+  const needle = query.toLowerCase();
+  return walkSessionFiles(root).filter((path) => path.toLowerCase().includes(needle));
+}
+
 function chunkEntries(entries: Record<string, unknown>[]) {
   const chunks: Record<string, unknown>[][] = [];
   let current: Record<string, unknown>[] = [];
@@ -454,11 +480,24 @@ async function pushSession(
 
 export default function (pi: ExtensionAPI) {
   pi.registerCommand("sync", {
-    description: "Push pi sessions to your Querion archive (usage: /sync | /sync all | /sync status)",
+    description:
+      "Push pi sessions to Querion — /sync (current) · /sync <id|path> · /sync all [filter] · /sync status",
     getArgumentCompletions: (prefix: string) => {
-      const options = ["all", "status"];
-      const filtered = options.filter((option) => option.startsWith(prefix));
-      return filtered.map((value) => ({ value, label: value }));
+      const subcommands = ["all", "status", "current"];
+      const items = subcommands
+        .filter((value) => value.startsWith(prefix))
+        .map((value) => ({ value, label: value }));
+      if (items.length > 0) return items;
+
+      const root = process.env.PI_SESSION_DIR || join(homedir(), ".pi", "agent", "sessions");
+      return sortByMtime(walkSessionFiles(root))
+        .slice(0, 20)
+        .map((path) => {
+          const base = path.split("/").pop() ?? path;
+          const id = base.replace(/\.jsonl$/, "").split("_").pop() ?? base;
+          return { value: id, label: id };
+        })
+        .filter((item) => item.value.startsWith(prefix));
     },
     handler: async (args, ctx) => {
       const parts = args.trim().split(/\s+/).filter(Boolean);
@@ -543,6 +582,59 @@ export default function (pi: ExtensionAPI) {
         );
         if (failures.length) {
           ctx.ui.notify(`Failed: ${failures.slice(0, 3).join(", ")}`, "error");
+        }
+        return;
+      }
+
+      // Sync a specific session: /sync <session-id | .jsonl path | substring>
+      const root = process.env.PI_SESSION_DIR || join(homedir(), ".pi", "agent", "sessions");
+      const isCurrent = parts.length === 0 || subcommand === "current";
+
+      if (!isCurrent) {
+        const query = args.trim();
+        const matches = resolveSessionFiles(query, ctx.cwd, root);
+
+        if (matches.length === 0) {
+          ctx.ui.notify(
+            `No session found matching "${query}". Pass a session id, a .jsonl path, or run /sync all.`,
+            "warning",
+          );
+          return;
+        }
+        if (matches.length > 1) {
+          const preview = matches
+            .slice(0, 5)
+            .map((path) => `  ${path.replace(homedir(), "~")}`)
+            .join("\n");
+          ctx.ui.notify(
+            `"${query}" matches ${matches.length} sessions — be more specific:\n${preview}`,
+            "warning",
+          );
+          return;
+        }
+
+        const file = matches[0];
+        const envelope = readSessionFile(file);
+        if (!envelope) {
+          ctx.ui.notify(`Could not read ${file}.`, "error");
+          return;
+        }
+
+        ctx.ui.setStatus(STATUS_KEY, "syncing…");
+        try {
+          const result = await pushSession(config, envelope, file);
+          ctx.ui.setStatus(STATUS_KEY, undefined);
+          ctx.ui.notify(
+            `Querion: synced ${envelope.header.id} · ${result.entries} entries` +
+              `${result.redactions > 0 ? ` · ${result.redactions} secrets redacted` : ""}`,
+            "info",
+          );
+        } catch (error) {
+          ctx.ui.setStatus(STATUS_KEY, undefined);
+          ctx.ui.notify(
+            `Querion sync failed: ${error instanceof Error ? error.message : String(error)}`,
+            "error",
+          );
         }
         return;
       }

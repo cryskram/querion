@@ -24,9 +24,7 @@ export default function LoginForm() {
       });
 
       if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as {
-          error?: string;
-        } | null;
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
         setError(payload?.error ?? "Login failed");
         setLoading(false);
         return;
@@ -42,30 +40,27 @@ export default function LoginForm() {
   }
 
   return (
-    <main className="flex min-h-dvh items-center justify-center px-4">
-      <div className="w-full max-w-sm">
+    <main className="relative flex min-h-dvh items-center justify-center px-4">
+      <div className="w-full max-w-sm animate-fade-in">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-surface2 bg-mantle text-2xl">
-            <span className="text-accent">◈</span>
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-surface1 bg-mantle text-2xl text-accent shadow-lg shadow-crust/50">
+            ◈
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight text-fg">Querion</h1>
-          <p className="mt-1.5 text-sm text-muted">
+          <h1 className="text-xl font-semibold tracking-tight text-fg">Querion</h1>
+          <p className="mt-1.5 text-xs text-muted">
             Your pi session archive. Private by default.
           </p>
         </div>
 
         <form
           onSubmit={onSubmit}
-          className="rounded-2xl border border-surface2 bg-mantle/80 p-6 shadow-2xl shadow-crust/60 backdrop-blur"
+          className="panel p-6 shadow-2xl shadow-crust/60"
         >
-          <label
-            htmlFor="password"
-            className="mb-2 block text-xs font-medium uppercase tracking-wider text-muted"
-          >
+          <label htmlFor="password" className="label">
             Password
           </label>
 
-          <div className="relative">
+          <div className="relative mt-2">
             <input
               id="password"
               name="password"
@@ -76,35 +71,43 @@ export default function LoginForm() {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               placeholder="••••••••••••"
-              className="w-full rounded-xl border border-surface2 bg-crust px-3.5 py-2.5 pr-11 text-sm text-fg outline-none transition placeholder:text-overlay focus:border-accent focus:ring-2 focus:ring-accent/25"
+              className="input pr-14 font-mono tracking-wide"
             />
             <button
               type="button"
               onClick={() => setReveal((value) => !value)}
               aria-label={reveal ? "Hide password" : "Show password"}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-xs text-muted transition hover:bg-surface/60 hover:text-fg"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-overlay0 transition hover:bg-surface0/60 hover:text-fg"
             >
               {reveal ? "hide" : "show"}
             </button>
           </div>
 
           {error ? (
-            <p className="mt-3 rounded-lg border border-red/30 bg-red/10 px-3 py-2 text-xs text-red">
-              {error}
+            <p className="mt-3 flex items-start gap-2 rounded-xl border border-red/30 bg-red/5 px-3 py-2 text-xs text-red">
+              <span aria-hidden>✕</span>
+              <span>{error}</span>
             </p>
           ) : null}
 
           <button
             type="submit"
             disabled={loading || password.length === 0}
-            className="mt-5 w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-crust transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+            className="btn btn-primary mt-5 w-full py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? "Checking…" : "Enter"}
+            {loading ? (
+              <>
+                <span className="spinner" /> Checking…
+              </>
+            ) : (
+              "Enter"
+            )}
           </button>
         </form>
 
-        <p className="mt-6 text-center text-xs text-overlay">
-          Sessions are synced from pi with <code className="text-muted">/sync</code>.
+        <p className="mt-6 text-center text-[11px] text-overlay0">
+          Sessions are synced from pi with{" "}
+          <code className="font-mono text-muted">/sync</code>.
         </p>
       </div>
     </main>

@@ -184,6 +184,7 @@ Inside pi:
 
 ```
 /sync                 sync the current session
+/sync <id|path>       sync one session by id, .jsonl path, or path substring
 /sync all             sync every session in ~/.pi/agent/sessions
 /sync all <text>      sync sessions whose path contains <text>
 /sync status          show resolved config + server health
@@ -192,9 +193,17 @@ Inside pi:
 Or bulk-sync from a terminal (cron-friendly):
 
 ```bash
-npm run sync:sessions              # all sessions
-npm run sync:sessions -- morphix   # filter by path
+npm run sync:sessions                       # all sessions
+npm run sync:sessions -- morphix            # filter by path
+npm run sync:sessions -- 01a07fd0           # a specific session id
+npm run sync:sessions -- ~/x/session.jsonl  # a specific file
 ```
+
+### Reading a session
+
+Open a session and use the **Oldest / Newest** toggle in the sticky toolbar to
+flip the transcript between oldest-first and newest-first. Pagination keeps the
+chosen order.
 
 ---
 

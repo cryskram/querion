@@ -2,36 +2,83 @@
 @plugin "@tailwindcss/typography";
 
 @theme {
+  /* ── Catppuccin Mocha ─────────────────────────────────────────────── */
+  --color-rosewater: #f5e0dc;
+  --color-flamingo: #f2cdcd;
+  --color-pink: #f5c2e7;
+  --color-mauve: #cba6f7;
+  --color-red: #f38ba8;
+  --color-maroon: #eba0ac;
+  --color-peach: #fab387;
+  --color-yellow: #f9e2af;
+  --color-green: #a6e3a1;
+  --color-teal: #94e2d5;
+  --color-sky: #89dceb;
+  --color-sapphire: #74c7ec;
+  --color-blue: #89b4fa;
+  --color-lavender: #b4befe;
+
+  --color-text: #cdd6f4;
+  --color-subtext1: #bac2de;
+  --color-subtext0: #a6adc8;
+  --color-overlay2: #9399b2;
+  --color-overlay1: #7f849c;
+  --color-overlay0: #6c7086;
+  --color-surface2: #585b70;
+  --color-surface1: #45475a;
+  --color-surface0: #313244;
   --color-base: #1e1e2e;
   --color-mantle: #181825;
   --color-crust: #11111b;
-  --color-surface: #313244;
-  --color-surface2: #45475a;
-  --color-surface3: #585b70;
-  --color-overlay: #6c7086;
-  --color-muted: #9399b2;
-  --color-subtext: #a6adc8;
-  --color-fg: #cdd6f4;
+
+  /* ── Semantic aliases ─────────────────────────────────────────────── */
   --color-accent: #cba6f7;
   --color-accent2: #89b4fa;
-  --color-green: #a6e3a1;
-  --color-red: #f38ba8;
-  --color-yellow: #f9e2af;
-  --color-peach: #fab387;
-  --color-teal: #94e2d5;
-  --color-pink: #f5c2e7;
-  --color-lavender: #b4befe;
-  --color-sapphire: #74c7ec;
+  --color-fg: #cdd6f4;
+  --color-subtext: #a6adc8;
+  --color-muted: #9399b2;
+  --color-overlay: #6c7086;
+  --color-surface: #313244;
+  --color-surface3: #585b70;
 
   --font-sans:
     Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono:
     "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --radius-panel: 1rem;
+
+  --animate-fade-in: fade-in 0.3s ease both;
+  --animate-shimmer: shimmer 1.6s linear infinite;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: -200% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
 }
 
 @layer base {
   :root {
     color-scheme: dark;
+  }
+
+  html {
+    scrollbar-gutter: stable;
   }
 
   html,
@@ -40,21 +87,39 @@
     color: var(--color-fg);
   }
 
+  /* A whisper of colour so the flat dark background has depth. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(60rem 40rem at 12% -8%, rgb(203 166 247 / 0.07), transparent 60%),
+      radial-gradient(50rem 36rem at 92% 4%, rgb(137 180 250 / 0.06), transparent 62%);
+  }
+
   body {
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    font-feature-settings: "cv05", "ss01";
   }
 
   ::selection {
-    background-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
+    background-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
+  }
+
+  :focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--color-accent) 70%, transparent);
+    outline-offset: 2px;
+    border-radius: 0.5rem;
   }
 
   * {
     scrollbar-width: thin;
-    scrollbar-color: var(--color-surface2) transparent;
+    scrollbar-color: var(--color-surface1) transparent;
   }
-
   *::-webkit-scrollbar {
     width: 10px;
     height: 10px;
@@ -63,13 +128,75 @@
     background: transparent;
   }
   *::-webkit-scrollbar-thumb {
-    background-color: var(--color-surface2);
+    background-color: var(--color-surface1);
     border-radius: 9999px;
     border: 2px solid transparent;
     background-clip: content-box;
   }
   *::-webkit-scrollbar-thumb:hover {
-    background-color: var(--color-surface3);
+    background-color: var(--color-surface2);
+  }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-2xl border border-surface0 bg-mantle/60;
+  }
+
+  .label {
+    @apply text-[10px] font-semibold uppercase tracking-[0.16em] text-overlay0;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-surface1 bg-crust/60 px-2.5 py-1 text-[11px] font-medium;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-xl border border-surface1 px-3.5 py-2 text-xs font-medium text-subtext0 transition-colors select-none;
+  }
+  .btn:hover {
+    @apply border-surface2 text-fg;
+  }
+
+  .btn-primary {
+    @apply border-transparent bg-accent text-crust;
+  }
+  .btn-primary:hover {
+    @apply border-transparent bg-mauve brightness-105 text-crust;
+  }
+
+  .btn-ghost {
+    @apply border-transparent text-muted;
+  }
+  .btn-ghost:hover {
+    @apply border-transparent bg-surface0/70 text-fg;
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-surface1 bg-crust/70 px-3.5 py-2.5 text-sm text-fg outline-none transition placeholder:text-overlay0;
+  }
+  .input:focus {
+    @apply border-accent/60 ring-2 ring-accent/20;
+  }
+
+  .stat {
+    @apply rounded-xl border border-surface0/80 bg-crust/40 px-3.5 py-3;
+  }
+
+  .spinner {
+    @apply inline-block h-3.5 w-3.5 animate-spin rounded-full border-[1.5px] border-current border-t-transparent;
+  }
+
+  .skeleton {
+    @apply rounded-md bg-surface0/50;
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgb(255 255 255 / 0.04) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: var(--animate-shimmer);
   }
 }
 
@@ -84,6 +211,9 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+  .animate-fade-in {
+    animation: var(--animate-fade-in);
+  }
 }
 
 /* ── Markdown (prose) tuned to Catppuccin Mocha ─────────────────────────── */
@@ -91,35 +221,46 @@
 .prose {
   --tw-prose-body: var(--color-fg);
   --tw-prose-headings: var(--color-lavender);
-  --tw-prose-lead: var(--color-subtext);
-  --tw-prose-links: var(--color-accent2);
+  --tw-prose-lead: var(--color-subtext0);
+  --tw-prose-links: var(--color-blue);
   --tw-prose-bold: var(--color-fg);
   --tw-prose-counters: var(--color-accent);
   --tw-prose-bullets: var(--color-accent);
-  --tw-prose-hr: var(--color-surface2);
-  --tw-prose-quotes: var(--color-subtext);
+  --tw-prose-hr: var(--color-surface1);
+  --tw-prose-quotes: var(--color-subtext0);
   --tw-prose-quote-borders: var(--color-accent);
   --tw-prose-captions: var(--color-muted);
   --tw-prose-code: var(--color-peach);
   --tw-prose-pre-code: var(--color-fg);
   --tw-prose-pre-bg: var(--color-crust);
-  --tw-prose-th-borders: var(--color-surface2);
-  --tw-prose-td-borders: var(--color-surface);
+  --tw-prose-th-borders: var(--color-surface1);
+  --tw-prose-td-borders: var(--color-surface0);
   max-width: none;
+  line-height: 1.7;
+}
+
+.prose :where(h1, h2, h3, h4) {
+  letter-spacing: -0.01em;
+}
+.prose :where(h2) {
+  @apply mt-6 mb-3 border-b border-surface0 pb-1.5 text-base font-semibold;
+}
+.prose :where(h3) {
+  @apply mt-5 mb-2 text-sm font-semibold;
 }
 
 .prose pre {
   background-color: var(--color-crust) !important;
-  border: 1px solid var(--color-surface);
+  border: 1px solid var(--color-surface0);
   border-radius: 0.75rem;
   padding: 1rem 1.15rem;
-  font-size: 0.82rem;
-  line-height: 1.6;
+  font-size: 0.8rem;
+  line-height: 1.65;
 }
 
 .prose code:not(pre code) {
   background-color: var(--color-mantle);
-  border: 1px solid var(--color-surface);
+  border: 1px solid var(--color-surface0);
   border-radius: 0.375rem;
   padding: 0.1rem 0.35rem;
   font-size: 0.85em;
@@ -131,7 +272,7 @@
 }
 
 .prose a {
-  text-decoration-color: color-mix(in srgb, var(--color-accent2) 50%, transparent);
+  text-decoration-color: color-mix(in srgb, var(--color-blue) 45%, transparent);
   text-underline-offset: 3px;
 }
 .prose a:hover {
@@ -147,14 +288,14 @@
 }
 
 .prose table {
-  font-size: 0.82rem;
+  font-size: 0.8rem;
 }
 .prose thead th {
   background: var(--color-mantle);
 }
 .prose img {
   border-radius: 0.75rem;
-  border: 1px solid var(--color-surface);
+  border: 1px solid var(--color-surface0);
 }
 
 /* ── highlight.js — Catppuccin Mocha ────────────────────────────────────── */
@@ -193,7 +334,7 @@
 .hljs-section,
 .hljs-function .hljs-title,
 .hljs-title.function_ {
-  color: var(--color-accent2);
+  color: var(--color-blue);
 }
 .hljs-variable,
 .hljs-template-variable,

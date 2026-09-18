@@ -32,9 +32,15 @@ export function DeleteSessionButton({ sessionId }: { sessionId: string }) {
       type="button"
       onClick={onDelete}
       disabled={busy}
-      className="rounded-lg border border-surface2 px-3 py-1.5 text-xs text-muted transition hover:border-red/60 hover:text-red disabled:opacity-50"
+      className="btn px-3 py-1.5 text-xs hover:border-red/50 hover:text-red disabled:opacity-50"
     >
-      {busy ? "Deleting…" : "Delete"}
+      {busy ? (
+        <>
+          <span className="spinner" /> Deleting…
+        </>
+      ) : (
+        "Delete"
+      )}
     </button>
   );
 }

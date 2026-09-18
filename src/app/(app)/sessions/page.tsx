@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LinkSpinner } from "@/components/LinkSpinner";
 import { SessionCard } from "@/components/SessionCard";
 import { formatCost, formatNumber } from "@/lib/format";
 import {
@@ -25,13 +26,26 @@ function buildQuery(base: Record<string, string | undefined>): string {
   return query ? `?${query}` : "";
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function StatTile({
+  label,
+  value,
+  glyph,
+  tone,
+}: {
+  label: string;
+  value: string;
+  glyph: string;
+  tone: string;
+}) {
   return (
-    <div className="rounded-xl border border-surface bg-mantle/50 px-3.5 py-2.5">
-      <div className="text-[10px] font-medium uppercase tracking-wider text-overlay">
-        {label}
+    <div className="stat">
+      <div className="flex items-center gap-1.5">
+        <span className={`text-[11px] ${tone}`}>{glyph}</span>
+        <span className="label">{label}</span>
       </div>
-      <div className="mt-0.5 text-lg font-semibold tabular-nums text-fg">{value}</div>
+      <div className="mt-1.5 text-lg font-semibold tabular-nums leading-none text-fg">
+        {value}
+      </div>
     </div>
   );
 }
@@ -43,16 +57,12 @@ export default async function SessionsPage({ searchParams }: PageProps) {
   const page = Math.max(Number(params.page) || 1, 1);
   const offset = (page - 1) * PAGE_SIZE;
 
-  let data: Awaited<
-    ReturnType<
-      () => Promise<{
-        sessions: Awaited<ReturnType<typeof listSessions>>;
-        total: number;
-        projects: Awaited<ReturnType<typeof listProjects>>;
-        stats: Awaited<ReturnType<typeof getGlobalStats>>;
-      }>
-    >
-  > | null = null;
+  let data: {
+    sessions: Awaited<ReturnType<typeof listSessions>>;
+    total: number;
+    projects: Awaited<ReturnType<typeof listProjects>>;
+    stats: Awaited<ReturnType<typeof getGlobalStats>>;
+  } | null = null;
   let dbError: string | null = null;
 
   try {
@@ -69,14 +79,16 @@ export default async function SessionsPage({ searchParams }: PageProps) {
 
   if (dbError || !data) {
     return (
-      <div className="mx-auto max-w-2xl rounded-2xl border border-red/30 bg-red/5 p-6">
+      <div className="mx-auto max-w-2xl animate-fade-in rounded-2xl border border-red/30 bg-red/5 p-6">
         <h1 className="text-lg font-semibold text-red">Database not reachable</h1>
-        <p className="mt-2 text-sm text-muted">
-          Querion could not reach Postgres. Set <code className="text-fg">DATABASE_URL</code> and{" "}
-          <code className="text-fg">DIRECT_URL</code> in <code className="text-fg">.env</code>, then
-          run <code className="text-fg">npm run migrate:deploy</code>.
+        <p className="mt-2 text-sm leading-relaxed text-muted">
+          Querion could not reach Postgres. Set{" "}
+          <code className="font-mono text-fg">DATABASE_URL</code> and{" "}
+          <code className="font-mono text-fg">DIRECT_URL</code> in{" "}
+          <code className="font-mono text-fg">.env</code>, then run{" "}
+          <code className="font-mono text-fg">npm run db:deploy</code>.
         </p>
-        <pre className="mt-4 overflow-x-auto rounded-xl border border-surface bg-crust p-3 text-xs text-red">
+        <pre className="mt-4 overflow-x-auto rounded-xl border border-surface1 bg-crust p-3 text-xs text-red/90">
           {dbError}
         </pre>
       </div>
@@ -85,116 +97,195 @@ export default async function SessionsPage({ searchParams }: PageProps) {
 
   const { sessions, total, projects, stats } = data;
   const totalPages = Math.max(Math.ceil(total / PAGE_SIZE), 1);
-  const showProjectChips = projects.length > 1;
+  const hasFilters = Boolean(q || project);
 
   return (
-    <div className="space-y-6">
-      <section className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-        <Stat label="Sessions" value={formatNumber(stats.sessions)} />
-        <Stat label="Messages" value={formatNumber(stats.messages)} />
-        <Stat label="Tokens" value={formatNumber(stats.tokens)} />
-        <Stat label="Cost" value={formatCost(stats.cost)} />
-      </section>
-
-      <section className="space-y-3">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <form action="/sessions" method="get" className="relative flex-1">
-            {project ? <input type="hidden" name="project" value={project} /> : null}
-            <input
-              type="search"
-              name="q"
-              defaultValue={q}
-              placeholder="Search sessions, projects, models…"
-              className="w-full rounded-xl border border-surface2 bg-mantle px-3.5 py-2.5 text-sm text-fg outline-none transition placeholder:text-overlay focus:border-accent focus:ring-2 focus:ring-accent/20"
+    <div className="grid animate-fade-in gap-6 lg:grid-cols-[17rem_1fr] lg:gap-8">
+      <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
+        <section className="panel p-4">
+          <h2 className="label">Archive</h2>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <StatTile
+              label="Sessions"
+              value={formatNumber(stats.sessions)}
+              glyph="◆"
+              tone="text-accent"
             />
-          </form>
-          <div className="text-xs text-overlay">
-            {total} {total === 1 ? "session" : "sessions"}
-            {q ? ` for “${q}”` : ""}
+            <StatTile
+              label="Messages"
+              value={formatNumber(stats.messages)}
+              glyph="▸"
+              tone="text-blue"
+            />
+            <StatTile
+              label="Tokens"
+              value={formatNumber(stats.tokens)}
+              glyph="✦"
+              tone="text-teal"
+            />
+            <StatTile
+              label="Cost"
+              value={formatCost(stats.cost)}
+              glyph="$"
+              tone="text-green"
+            />
           </div>
+        </section>
+
+        <section className="panel p-4">
+          <h2 className="label">Search</h2>
+          <form action="/sessions" method="get" className="mt-3">
+            {project ? <input type="hidden" name="project" value={project} /> : null}
+            <div className="relative">
+              <span
+                aria-hidden
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-overlay0"
+              >
+                ⌕
+              </span>
+              <input
+                type="search"
+                name="q"
+                defaultValue={q}
+                placeholder="Title, project, model…"
+                className="input py-2.5 pl-8 text-xs"
+                autoComplete="off"
+              />
+            </div>
+            <div className="mt-2.5 flex items-center gap-2">
+              <button type="submit" className="btn btn-primary flex-1 py-2">
+                Search
+              </button>
+              {hasFilters ? (
+                <Link href="/sessions" className="btn btn-ghost py-2">
+                  Clear
+                </Link>
+              ) : null}
+            </div>
+          </form>
+        </section>
+
+        {projects.length > 1 ? (
+          <section className="panel p-4">
+            <h2 className="label">Projects</h2>
+            <ul className="mt-2.5 space-y-0.5">
+              <li>
+                <Link
+                  href={`/sessions${buildQuery({ q })}`}
+                  className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs transition ${
+                    !project
+                      ? "bg-accent/10 text-accent"
+                      : "text-muted hover:bg-surface0/50 hover:text-fg"
+                  }`}
+                >
+                  <span>All projects</span>
+                  <span className="tabular-nums text-overlay0">{stats.projects}</span>
+                </Link>
+              </li>
+              {projects.map((entry) => (
+                <li key={entry.project}>
+                  <Link
+                    href={`/sessions${buildQuery({ q, project: entry.project })}`}
+                    className={`flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-xs transition ${
+                      project === entry.project
+                        ? "bg-accent/10 text-accent"
+                        : "text-muted hover:bg-surface0/50 hover:text-fg"
+                    }`}
+                  >
+                    <span className="truncate">{entry.project}</span>
+                    <span className="tabular-nums text-overlay0">{entry.count}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+      </aside>
+
+      <section className="min-w-0 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-base font-semibold tracking-tight text-fg">Sessions</h1>
+            {q ? (
+              <span className="chip text-muted">
+                “{q}”
+                <Link
+                  href={`/sessions${buildQuery({ project })}`}
+                  className="text-overlay0 hover:text-red"
+                  aria-label="Clear search"
+                >
+                  ✕
+                </Link>
+              </span>
+            ) : null}
+            {project ? (
+              <span className="chip border-accent/30 text-accent">
+                {project}
+                <Link
+                  href={`/sessions${buildQuery({ q })}`}
+                  className="text-accent/70 hover:text-red"
+                  aria-label="Clear project filter"
+                >
+                  ✕
+                </Link>
+              </span>
+            ) : null}
+          </div>
+          <span className="text-xs tabular-nums text-overlay0">
+            {total} {total === 1 ? "session" : "sessions"}
+          </span>
         </div>
 
-        {showProjectChips ? (
-          <div className="flex flex-wrap gap-1.5">
-            <Link
-              href={`/sessions${buildQuery({ q })}`}
-              className={`rounded-full border px-3 py-1 text-[11px] font-medium transition ${
-                !project
-                  ? "border-accent/60 bg-accent/15 text-accent"
-                  : "border-surface2 text-muted hover:border-surface3 hover:text-fg"
-              }`}
-            >
-              All
-            </Link>
-            {projects.map((entry) => (
-              <Link
-                key={entry.project}
-                href={`/sessions${buildQuery({ q, project: entry.project })}`}
-                className={`rounded-full border px-3 py-1 text-[11px] font-medium transition ${
-                  project === entry.project
-                    ? "border-accent/60 bg-accent/15 text-accent"
-                    : "border-surface2 text-muted hover:border-surface3 hover:text-fg"
-                }`}
-              >
-                {entry.project}
-                <span className="ml-1.5 text-overlay">{entry.count}</span>
+        {sessions.length === 0 ? (
+          <div className="panel flex flex-col items-center px-6 py-14 text-center">
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-surface1 bg-crust text-xl text-accent">
+              ◈
+            </div>
+            <h2 className="text-sm font-semibold text-fg">
+              {hasFilters ? "No matching sessions" : "No sessions yet"}
+            </h2>
+            <p className="mx-auto mt-2 max-w-sm text-xs leading-relaxed text-muted">
+              {hasFilters
+                ? "Try a different search or clear the filters."
+                : "Run /sync inside a pi session (or /sync all for history) and they will appear here."}
+            </p>
+            {hasFilters ? (
+              <Link href="/sessions" className="btn mt-4">
+                Clear filters
               </Link>
+            ) : null}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
+            {sessions.map((session) => (
+              <SessionCard key={session.id} session={session} />
             ))}
           </div>
+        )}
+
+        {totalPages > 1 ? (
+          <nav className="flex items-center justify-between pt-1">
+            <Link
+              href={`/sessions${buildQuery({ q, project, page: String(page - 1) })}`}
+              aria-disabled={page <= 1}
+              className={`btn ${page <= 1 ? "pointer-events-none opacity-40" : ""}`}
+            >
+              ← Newer
+            </Link>
+            <span className="text-xs tabular-nums text-overlay0">
+              Page {page} / {totalPages}
+              <LinkSpinner className="ml-2 align-middle text-accent" />
+            </span>
+            <Link
+              href={`/sessions${buildQuery({ q, project, page: String(page + 1) })}`}
+              aria-disabled={page >= totalPages}
+              className={`btn ${page >= totalPages ? "pointer-events-none opacity-40" : ""}`}
+            >
+              Older →
+            </Link>
+          </nav>
         ) : null}
       </section>
-
-      {sessions.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-surface2 bg-mantle/40 p-10 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl border border-surface2 bg-crust text-xl text-accent">
-            ◈
-          </div>
-          <h2 className="text-base font-semibold text-fg">
-            {q || project ? "No matching sessions" : "No sessions yet"}
-          </h2>
-          <p className="mx-auto mt-2 max-w-md text-sm text-muted">
-            {q || project
-              ? "Try a different search or clear the filters."
-              : "Install the Querion pi extension and run /sync inside a pi session."}
-          </p>
-        </div>
-      ) : (
-        <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {sessions.map((session) => (
-            <SessionCard key={session.id} session={session} />
-          ))}
-        </section>
-      )}
-
-      {totalPages > 1 ? (
-        <nav className="flex items-center justify-between pt-2">
-          <Link
-            href={`/sessions${buildQuery({ q, project, page: String(page - 1) })}`}
-            aria-disabled={page <= 1}
-            className={`rounded-lg border border-surface2 px-3.5 py-1.5 text-xs transition ${
-              page <= 1
-                ? "pointer-events-none opacity-40"
-                : "text-muted hover:border-surface3 hover:text-fg"
-            }`}
-          >
-            ← Newer
-          </Link>
-          <span className="text-xs text-overlay">
-            Page {page} / {totalPages}
-          </span>
-          <Link
-            href={`/sessions${buildQuery({ q, project, page: String(page + 1) })}`}
-            aria-disabled={page >= totalPages}
-            className={`rounded-lg border border-surface2 px-3.5 py-1.5 text-xs transition ${
-              page >= totalPages
-                ? "pointer-events-none opacity-40"
-                : "text-muted hover:border-surface3 hover:text-fg"
-            }`}
-          >
-            Older →
-          </Link>
-        </nav>
-      ) : null}
     </div>
   );
 }
