@@ -33,24 +33,28 @@ Resolution order (first match wins):
 1. Environment `QUERION_URL` (non-secret) + `QUERION_SYNC_TOKEN`
 2. Environment `QUERION_URL` + a token file:
    `$QUERION_TOKEN_FILE` → `~/.config/querion/token` → `~/.config/querion/token.txt`
-3. `$QUERION_CONFIG`, `~/.config/querion/config.json`, or `~/.querion.json`:
+4. `$QUERION_CONFIG` / `~/.config/querion/config.json` / `~/.querion.json`:
 
    ```json
    { "url": "https://querion.vercel.app", "token": "<QUERION_SYNC_TOKEN>" }
    ```
 
-4. `.env` / `.env.local` in `~/Projects/querion`, then `.env` in the current directory
+   `tokenFile` may be used instead of `token`:
+   `{ "url": "…", "tokenFile": "/absolute/path/to/querion-token" }`
+
+5. `.env` / `.env.local` in `~/Projects/querion`
 
 URLs/tokens containing `CHANGE-ME`/`<…>` placeholders are ignored, so an
 unconfigured placeholder URL cleanly falls through to the next source.
 
-The declarative setup keeps the URL in `niri-desktop` and the token in a
-gitignored file:
+The declarative setup writes a **non-secret config file** with home-manager and
+keeps the token in a gitignored file:
 
 ```nix
-environment.sessionVariables = {
-  QUERION_URL = "https://<your-app>.vercel.app";
-  QUERION_TOKEN_FILE = "/home/vageesh/niri-desktop/secrets/querion-token";
+# modules/core.nix (inside home-manager.users.<you>)
+xdg.configFile."querion/config.json".text = builtins.toJSON {
+  url = "https://<your-app>.vercel.app";
+  tokenFile = "/home/<you>/niri-desktop/secrets/querion-token";
 };
 ```
 
@@ -58,6 +62,11 @@ environment.sessionVariables = {
 echo -n "<QUERION_SYNC_TOKEN>" > ~/niri-desktop/secrets/querion-token
 chmod 600 ~/niri-desktop/secrets/querion-token
 ```
+
+Prefer this over `environment.sessionVariables`: session env vars only apply to
+new login sessions and are easy to miss for a GUI-started shell, whereas the
+config file is read directly and takes effect immediately after
+`nixos-rebuild switch`.
 
 ## Commands
 

@@ -20,11 +20,14 @@
  *   1. env:  QUERION_URL (non-secret) + QUERION_SYNC_TOKEN
  *   2. env QUERION_URL + token file (QUERION_TOKEN_FILE, ~/.config/querion/token)
  *   3. $QUERION_CONFIG / ~/.config/querion/config.json / ~/.querion.json
- *      → { "url": "https://…", "token": "…" } (either field may come from env)
+ *      → { "url": "https://…", "token": "…" }  (or "tokenFile": "/path/to/token",
+ *        and either field may instead come from the environment)
  *   4. .env in ~/Projects/querion, then .env in the current directory
  *
- * Declarative setup: niri-desktop sets QUERION_URL and QUERION_TOKEN_FILE.
- * Keep the token itself out of git (secrets/querion-token is gitignored).
+ * Declarative setup (recommended): a home-manager `xdg.configFile` writes
+ * ~/.config/querion/config.json with { url, tokenFile } — read directly, with no
+ * dependence on session environment variables reaching the GUI session. The
+ * token itself lives in a gitignored file and is never committed.
  */
 
 import { createHash } from "node:crypto";
@@ -107,6 +110,22 @@ function readTokenFile(): { token: string; source: string } | null {
   return null;
 }
 
+function expandHome(path: string): string {
+  return path.startsWith("~/") ? join(homedir(), path.slice(2)) : path;
+}
+
+function readTokenFrom(path: string | undefined): string | undefined {
+  if (!path) return undefined;
+  const resolved = expandHome(path);
+  if (!existsSync(resolved)) return undefined;
+  try {
+    const token = readFileSync(resolved, "utf8").trim();
+    return token && !isPlaceholder(token) ? token : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function loadConfig(cwd: string): { config: QuerionConfig | null; hint: string } {
   const env = process.env;
 
@@ -150,17 +169,18 @@ function loadConfig(cwd: string): { config: QuerionConfig | null; hint: string }
       const parsed = JSON.parse(readFileSync(candidate, "utf8")) as {
         url?: string;
         token?: string;
+        tokenFile?: string;
       };
       const url =
         parsed.url && !isPlaceholder(parsed.url) ? normalizeUrl(parsed.url) : envUrl;
       const token =
         parsed.token && !isPlaceholder(parsed.token)
           ? parsed.token
-          : (envToken ?? tokenFile?.token);
+          : (envToken ?? tokenFile?.token ?? readTokenFrom(parsed.tokenFile));
       if (url && token) {
         return {
           config: { url, token, source: candidate },
-          hint: `Add url + token to ${candidate}.`,
+          hint: `Add url + token or tokenFile to ${candidate}.`,
         };
       }
     } catch {

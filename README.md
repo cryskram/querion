@@ -166,9 +166,11 @@ programs.pi.coding-agent.extensions = [
   ../pi/extensions/querion-sync.ts
 ];
 
-environment.sessionVariables = {
-  QUERION_URL = "https://<your-app>.vercel.app";
-  QUERION_TOKEN_FILE = "/absolute/path/to/secrets/querion-token";  # gitignored
+# inside home-manager.users.<you> — non-secret client config, read directly by
+# the extension (no dependence on session env vars).
+xdg.configFile."querion/config.json".text = builtins.toJSON {
+  url = "https://<your-app>.vercel.app";
+  tokenFile = "/absolute/path/to/secrets/querion-token"; # gitignored
 };
 ```
 
