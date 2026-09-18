@@ -144,33 +144,37 @@ Notes:
 
 The pi extension and the CLI resolve configuration in this order:
 
-1. Environment: `QUERION_URL` + `QUERION_SYNC_TOKEN`
-2. `~/.config/querion/config.json`:
+1. Environment: `QUERION_URL` (non-secret) + `QUERION_SYNC_TOKEN`
+2. Environment `QUERION_URL` + a token file
+   (`$QUERION_TOKEN_FILE`, `~/.config/querion/token`, `~/.config/querion/token.txt`)
+3. `$QUERION_CONFIG` / `~/.config/querion/config.json` / `~/.querion.json`:
 
    ```json
    { "url": "https://querion.vercel.app", "token": "<QUERION_SYNC_TOKEN>" }
    ```
 
-3. `.env` / `.env.local` inside `~/Projects/querion`
+4. `.env` / `.env.local` inside `~/Projects/querion`
 
-### 2. Install the pi extension
+### 2. Load the extension (declarative)
 
-Copy the extension into pi's global extensions directory:
+The extension is a single file, `pi/querion-sync.ts`. In a Nix setup it is
+loaded from the repo — **do not** copy it into `~/.pi/agent/extensions`:
 
-```bash
-mkdir -p ~/.pi/agent/extensions
-cp pi/querion-sync.ts ~/.pi/agent/extensions/querion.ts
+```nix
+# modules/core.nix
+programs.pi.coding-agent.extensions = [
+  ../pi/extensions/querion-sync.ts
+];
+
+environment.sessionVariables = {
+  QUERION_URL = "https://<your-app>.vercel.app";
+  QUERION_TOKEN_FILE = "/absolute/path/to/secrets/querion-token";  # gitignored
+};
 ```
 
-Or load it for a single run / a trusted project:
-
-```bash
-pi -e ~/Projects/querion/pi/querion-sync.ts     # one-off
-cp pi/querion-sync.ts .pi/extensions/querion.ts # project-local
-```
-
-Declaratively (Nix), add the copied file to your pi module's `extensions` list and
-rebuild. Hot-reload with `/reload` after edits.
+Then `nixos-rebuild switch` and the command is available in every pi session.
+Non-Nix fallbacks: `pi -e ./querion-sync.ts` (one-off) or
+`.pi/extensions/querion.ts` (project-local).
 
 ### 3. Use it
 

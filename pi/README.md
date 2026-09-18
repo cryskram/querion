@@ -2,38 +2,62 @@
 
 `querion-sync.ts` is a standalone pi extension that uploads pi sessions to a
 Querion server. It has no runtime dependencies (Node built-ins only), so it can
-be copied anywhere.
+be loaded from anywhere.
 
-## Install
+## Load it (declarative)
 
-```bash
-# global: available in every pi session
-mkdir -p ~/.pi/agent/extensions
-cp querion-sync.ts ~/.pi/agent/extensions/querion.ts
+This repository is the upstream copy; the machine loads it from
+`~/niri-desktop/pi/extensions/querion-sync.ts` via the flake:
 
-# project-local: only in a trusted project
-mkdir -p .pi/extensions
-cp querion-sync.ts .pi/extensions/querion.ts
-
-# one-off
-pi -e ./querion-sync.ts
+```nix
+# ~/niri-desktop/modules/core.nix
+programs.pi.coding-agent.extensions = [
+  ../pi/extensions/querion-sync.ts
+];
 ```
 
-For a declarative Nix setup, point your pi module's `extensions` list at the
-copied file and rebuild. `/reload` picks up edits in the global directory.
+`nixos-rebuild switch` and it is available in every pi session. Do **not** copy
+it into `~/.pi/agent/extensions` — the repo is the source of truth.
+
+Non-Nix fallbacks:
+
+```bash
+pi -e ./querion-sync.ts          # one-off
+cp querion-sync.ts .pi/extensions/querion.ts   # project-local
+```
 
 ## Configure
 
 Resolution order (first match wins):
 
-1. Environment variables `QUERION_URL` and `QUERION_SYNC_TOKEN`
-2. `$QUERION_CONFIG`, `~/.config/querion/config.json`, or `~/.querion.json`:
+1. Environment `QUERION_URL` (non-secret) + `QUERION_SYNC_TOKEN`
+2. Environment `QUERION_URL` + a token file:
+   `$QUERION_TOKEN_FILE` → `~/.config/querion/token` → `~/.config/querion/token.txt`
+3. `$QUERION_CONFIG`, `~/.config/querion/config.json`, or `~/.querion.json`:
 
    ```json
    { "url": "https://querion.vercel.app", "token": "<QUERION_SYNC_TOKEN>" }
    ```
 
-3. `.env` / `.env.local` in `~/Projects/querion`, then `.env` in the current directory
+4. `.env` / `.env.local` in `~/Projects/querion`, then `.env` in the current directory
+
+URLs/tokens containing `CHANGE-ME`/`<…>` placeholders are ignored, so an
+unconfigured placeholder URL cleanly falls through to the next source.
+
+The declarative setup keeps the URL in `niri-desktop` and the token in a
+gitignored file:
+
+```nix
+environment.sessionVariables = {
+  QUERION_URL = "https://<your-app>.vercel.app";
+  QUERION_TOKEN_FILE = "/home/vageesh/niri-desktop/secrets/querion-token";
+};
+```
+
+```bash
+echo -n "<QUERION_SYNC_TOKEN>" > ~/niri-desktop/secrets/querion-token
+chmod 600 ~/niri-desktop/secrets/querion-token
+```
 
 ## Commands
 

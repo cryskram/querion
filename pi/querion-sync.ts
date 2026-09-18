@@ -5,10 +5,10 @@
  * can be read from anywhere. Standalone: no runtime dependencies beyond Node
  * built-ins and pi's ExtensionAPI (type-only import).
  *
- * Install (declarative, pick one):
- *   • Copy this file to  ~/.pi/agent/extensions/querion.ts
- *   • Or run:             pi -e /path/to/querion/pi/querion-sync.ts
- *   • Or project-local:   .pi/extensions/querion.ts  (inside a trusted project)
+ * Loading (declarative):
+ *   This file is loaded from ~/niri-desktop via `programs.pi.coding-agent.extensions`
+ *   (see modules/core.nix). Do not copy it into ~/.pi/agent/extensions — the repo
+ *   is the source of truth. For a one-off run: `pi -e ./querion-sync.ts`.
  *
  * Usage inside pi:
  *   /sync              sync the current session
@@ -17,11 +17,14 @@
  *   /sync status       show resolved config + server health
  *
  * Config resolution (first match wins):
- *   1. env:  QUERION_URL + QUERION_SYNC_TOKEN
- *   2. $QUERION_CONFIG (a JSON file) or ~/.config/querion/config.json
- *   3. .env in ~/Projects/querion, then .env in the current directory
+ *   1. env:  QUERION_URL (non-secret) + QUERION_SYNC_TOKEN
+ *   2. env QUERION_URL + token file (QUERION_TOKEN_FILE, ~/.config/querion/token)
+ *   3. $QUERION_CONFIG / ~/.config/querion/config.json / ~/.querion.json
+ *      → { "url": "https://…", "token": "…" } (either field may come from env)
+ *   4. .env in ~/Projects/querion, then .env in the current directory
  *
- *   config.json: { "url": "https://querion.example.com", "token": "…" }
+ * Declarative setup: niri-desktop sets QUERION_URL and QUERION_TOKEN_FILE.
+ * Keep the token itself out of git (secrets/querion-token is gitignored).
  */
 
 import { createHash } from "node:crypto";
@@ -79,17 +82,59 @@ function parseEnvFile(path: string): Record<string, string> {
   return result;
 }
 
+function isPlaceholder(value: string): boolean {
+  return /CHANGE[-_]?ME|REPLACE|PLACEHOLDER|<[^>]+>/i.test(value);
+}
+
+function tokenFileCandidates(): string[] {
+  return [
+    process.env.QUERION_TOKEN_FILE,
+    join(homedir(), ".config", "querion", "token"),
+    join(homedir(), ".config", "querion", "token.txt"),
+  ].filter((value): value is string => Boolean(value));
+}
+
+function readTokenFile(): { token: string; source: string } | null {
+  for (const path of tokenFileCandidates()) {
+    if (!existsSync(path)) continue;
+    try {
+      const token = readFileSync(path, "utf8").trim();
+      if (token && !isPlaceholder(token)) return { token, source: path };
+    } catch {
+      // Ignore unreadable token files.
+    }
+  }
+  return null;
+}
+
 function loadConfig(cwd: string): { config: QuerionConfig | null; hint: string } {
   const env = process.env;
 
-  if (env.QUERION_URL && env.QUERION_SYNC_TOKEN) {
+  const envUrl =
+    env.QUERION_URL && !isPlaceholder(env.QUERION_URL)
+      ? normalizeUrl(env.QUERION_URL)
+      : undefined;
+  const envToken =
+    env.QUERION_SYNC_TOKEN && !isPlaceholder(env.QUERION_SYNC_TOKEN)
+      ? env.QUERION_SYNC_TOKEN
+      : undefined;
+
+  if (envUrl && envToken) {
+    return {
+      config: { url: envUrl, token: envToken, source: "environment variables" },
+      hint: "Set QUERION_URL and QUERION_SYNC_TOKEN in your shell.",
+    };
+  }
+
+  const tokenFile = readTokenFile();
+  if (envUrl && tokenFile) {
     return {
       config: {
-        url: normalizeUrl(env.QUERION_URL),
-        token: env.QUERION_SYNC_TOKEN,
-        source: "environment variables",
+        url: envUrl,
+        token: tokenFile.token,
+        source: `environment URL + ${tokenFile.source}`,
       },
-      hint: "Set QUERION_URL and QUERION_SYNC_TOKEN in your shell.",
+      hint: "Set QUERION_SYNC_TOKEN in your shell, or create ~/.config/querion/token.",
     };
   }
 
@@ -106,11 +151,15 @@ function loadConfig(cwd: string): { config: QuerionConfig | null; hint: string }
         url?: string;
         token?: string;
       };
-      const url = parsed.url ?? env.QUERION_URL;
-      const token = parsed.token ?? env.QUERION_SYNC_TOKEN;
+      const url =
+        parsed.url && !isPlaceholder(parsed.url) ? normalizeUrl(parsed.url) : envUrl;
+      const token =
+        parsed.token && !isPlaceholder(parsed.token)
+          ? parsed.token
+          : (envToken ?? tokenFile?.token);
       if (url && token) {
         return {
-          config: { url: normalizeUrl(url), token, source: candidate },
+          config: { url, token, source: candidate },
           hint: `Add url + token to ${candidate}.`,
         };
       }
@@ -128,11 +177,17 @@ function loadConfig(cwd: string): { config: QuerionConfig | null; hint: string }
   for (const candidate of envFileCandidates) {
     if (!existsSync(candidate)) continue;
     const values = parseEnvFile(candidate);
-    const url = values.QUERION_URL ?? env.QUERION_URL;
-    const token = values.QUERION_SYNC_TOKEN ?? env.QUERION_SYNC_TOKEN;
+    const url =
+      values.QUERION_URL && !isPlaceholder(values.QUERION_URL)
+        ? normalizeUrl(values.QUERION_URL)
+        : envUrl;
+    const token =
+      values.QUERION_SYNC_TOKEN && !isPlaceholder(values.QUERION_SYNC_TOKEN)
+        ? values.QUERION_SYNC_TOKEN
+        : (envToken ?? tokenFile?.token);
     if (url && token) {
       return {
-        config: { url: normalizeUrl(url), token, source: candidate },
+        config: { url, token, source: candidate },
         hint: `Set QUERION_URL and QUERION_SYNC_TOKEN in ${candidate}.`,
       };
     }
@@ -141,7 +196,7 @@ function loadConfig(cwd: string): { config: QuerionConfig | null; hint: string }
   return {
     config: null,
     hint:
-      "Set QUERION_URL + QUERION_SYNC_TOKEN, or create ~/.config/querion/config.json with { url, token }.",
+      "Set QUERION_URL + QUERION_SYNC_TOKEN, create ~/.config/querion/token, or create ~/.config/querion/config.json with { url, token }.",
   };
 }
 
