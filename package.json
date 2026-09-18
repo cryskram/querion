@@ -51,5 +51,8 @@
   },
   "overrides": {
     "postcss": "8.5.28"
+  },
+  "allowScripts": {
+    "@prisma/engines@7.8.0": true
   }
 }

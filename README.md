@@ -199,6 +199,7 @@ All `/api/*` routes require either the auth cookie (browser) or a Bearer token (
 | Method | Route | Auth | Purpose |
 |---|---|---|---|
 | `GET` | `/api/health` | public | DB liveness + latency |
+| `GET`/`HEAD` | `/api/ping` | public | uptime-bot keep-alive; runs a real query |
 | `POST` | `/api/sync` | `Bearer QUERION_SYNC_TOKEN` | ingest a session (chunked, idempotent) |
 | `GET` | `/api/sessions` | cookie | list/search (`?q=&project=&limit=&offset=`) |
 | `GET` | `/api/sessions/:id` | cookie | session detail: summary + active branch + all entries |
@@ -228,6 +229,23 @@ All `/api/*` routes require either the auth cookie (browser) or a Bearer token (
 
 Large sessions are sent in chunks (≤ ~3 MB each, ≤ 400 entries); the client sets
 `done: true` on the final chunk. Re-sending any chunk is safe.
+
+---
+
+## Keeping Supabase awake
+
+Free Supabase projects pause after a period of inactivity. Point an uptime
+monitor (UptimeRobot, Better Stack, cron-job.org, …) at:
+
+```
+GET https://<your-app>.vercel.app/api/ping
+```
+
+`/api/ping` is public, uncached (`Cache-Control: no-store`), answers `GET` and
+`HEAD`, and runs a small real query against the `Session` table (not just
+`SELECT 1`) so the database registers genuine activity. `200` = up, `503` = down.
+
+A monitor every 5–10 minutes is plenty.
 
 ---
 
