@@ -1,0 +1,65 @@
+// Querion — Prisma schema (Prisma 7)
+//
+// In Prisma 7 the connection URL lives in prisma.config.ts, not here. The app
+// connects through the @prisma/adapter-pg driver adapter using DATABASE_URL,
+// while migrations/introspection use DIRECT_URL (see prisma.config.ts).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// One pi coding-agent session (one .jsonl file).
+model Session {
+  id             String   @id // pi session UUID (from the session header)
+  parentSession  String? // set when created via /fork or /clone
+  project        String // basename of cwd, or "~" for home
+  cwd            String
+  title          String? // first user message, truncated
+  name           String? // user-set session name (/name)
+  model          String?
+  provider       String?
+  version        Int      @default(3)
+  startedAt      DateTime
+  lastActivityAt DateTime
+  messageCount   Int      @default(0)
+  userMessages   Int      @default(0)
+  totalTokens    Int      @default(0)
+  totalCost      Float    @default(0)
+  leafId         String?
+  sourceFile     String? // basename of the .jsonl on the syncing machine
+  contentHash    String? // hash of the full entry set — used for change detection
+  syncedAt       DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  entries Entry[]
+
+  @@index([project])
+  @@index([lastActivityAt])
+  @@index([startedAt])
+}
+
+/// One JSONL line of a session (message, compaction, model_change, label, ...).
+model Entry {
+  id        String   @id @default(cuid())
+  sessionId String
+  entryId   String // pi's 8-char entry id
+  parentId  String?
+  seq       Int // position in the file — stable ordering
+  type      String // message | compaction | branch_summary | model_change | ...
+  role      String? // user | assistant | toolResult | ... (messages only)
+  timestamp DateTime
+  data      Json // full raw entry, verbatim
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, entryId])
+  @@index([sessionId, seq])
+  @@index([sessionId, timestamp])
+  @@index([type])
+}

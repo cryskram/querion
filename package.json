@@ -1,0 +1,55 @@
+{
+  "name": "querion",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Personal pi session archive — sync pi coding-agent sessions and read them anywhere.",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "node scripts/prisma.mjs generate && next build",
+    "start": "next start",
+    "prepare": "node scripts/prisma.mjs generate",
+    "typecheck": "tsc --noEmit",
+    "prisma": "node scripts/prisma.mjs",
+    "db:generate": "node scripts/prisma.mjs generate",
+    "db:migrate": "node scripts/prisma.mjs migrate dev",
+    "db:deploy": "node scripts/prisma.mjs migrate deploy",
+    "db:status": "node scripts/prisma.mjs migrate status",
+    "db:push": "node scripts/prisma.mjs db push",
+    "db:studio": "node scripts/prisma.mjs studio",
+    "sync:sessions": "node scripts/sync-sessions.mjs"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "7.8.0",
+    "@prisma/client": "7.8.0",
+    "clsx": "2.1.1",
+    "date-fns": "4.4.0",
+    "dotenv": "17.2.3",
+    "highlight.js": "11.12.0",
+    "next": "15.5.25",
+    "pg": "8.16.3",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-markdown": "10.1.0",
+    "rehype-highlight": "7.0.2",
+    "remark-gfm": "4.0.1",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.3",
+    "@tailwindcss/typography": "0.5.20",
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.15.6",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "prisma": "7.8.0",
+    "tailwindcss": "4.3.3",
+    "typescript": "^5.9.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "overrides": {
+    "postcss": "8.5.28"
+  }
+}

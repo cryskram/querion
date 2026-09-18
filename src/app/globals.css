@@ -1,0 +1,218 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --color-base: #1e1e2e;
+  --color-mantle: #181825;
+  --color-crust: #11111b;
+  --color-surface: #313244;
+  --color-surface2: #45475a;
+  --color-surface3: #585b70;
+  --color-overlay: #6c7086;
+  --color-muted: #9399b2;
+  --color-subtext: #a6adc8;
+  --color-fg: #cdd6f4;
+  --color-accent: #cba6f7;
+  --color-accent2: #89b4fa;
+  --color-green: #a6e3a1;
+  --color-red: #f38ba8;
+  --color-yellow: #f9e2af;
+  --color-peach: #fab387;
+  --color-teal: #94e2d5;
+  --color-pink: #f5c2e7;
+  --color-lavender: #b4befe;
+  --color-sapphire: #74c7ec;
+
+  --font-sans:
+    Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono:
+    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html,
+  body {
+    background-color: var(--color-base);
+    color: var(--color-fg);
+  }
+
+  body {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-surface2) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--color-surface2);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-surface3);
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* ── Markdown (prose) tuned to Catppuccin Mocha ─────────────────────────── */
+
+.prose {
+  --tw-prose-body: var(--color-fg);
+  --tw-prose-headings: var(--color-lavender);
+  --tw-prose-lead: var(--color-subtext);
+  --tw-prose-links: var(--color-accent2);
+  --tw-prose-bold: var(--color-fg);
+  --tw-prose-counters: var(--color-accent);
+  --tw-prose-bullets: var(--color-accent);
+  --tw-prose-hr: var(--color-surface2);
+  --tw-prose-quotes: var(--color-subtext);
+  --tw-prose-quote-borders: var(--color-accent);
+  --tw-prose-captions: var(--color-muted);
+  --tw-prose-code: var(--color-peach);
+  --tw-prose-pre-code: var(--color-fg);
+  --tw-prose-pre-bg: var(--color-crust);
+  --tw-prose-th-borders: var(--color-surface2);
+  --tw-prose-td-borders: var(--color-surface);
+  max-width: none;
+}
+
+.prose pre {
+  background-color: var(--color-crust) !important;
+  border: 1px solid var(--color-surface);
+  border-radius: 0.75rem;
+  padding: 1rem 1.15rem;
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.prose code:not(pre code) {
+  background-color: var(--color-mantle);
+  border: 1px solid var(--color-surface);
+  border-radius: 0.375rem;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.85em;
+  font-weight: 500;
+}
+.prose code::before,
+.prose code::after {
+  content: none;
+}
+
+.prose a {
+  text-decoration-color: color-mix(in srgb, var(--color-accent2) 50%, transparent);
+  text-underline-offset: 3px;
+}
+.prose a:hover {
+  color: var(--color-accent);
+}
+
+.prose blockquote {
+  font-style: normal;
+  border-left-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+  border-radius: 0 0.5rem 0.5rem 0;
+  padding: 0.25rem 1rem;
+}
+
+.prose table {
+  font-size: 0.82rem;
+}
+.prose thead th {
+  background: var(--color-mantle);
+}
+.prose img {
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-surface);
+}
+
+/* ── highlight.js — Catppuccin Mocha ────────────────────────────────────── */
+
+.hljs {
+  color: var(--color-fg);
+  background: transparent;
+}
+.hljs-comment,
+.hljs-quote {
+  color: var(--color-overlay);
+  font-style: italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-name {
+  color: var(--color-accent);
+}
+.hljs-string,
+.hljs-doctag,
+.hljs-regexp,
+.hljs-addition {
+  color: var(--color-green);
+}
+.hljs-number,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-attr,
+.hljs-attribute {
+  color: var(--color-peach);
+}
+.hljs-title,
+.hljs-section,
+.hljs-function .hljs-title,
+.hljs-title.function_ {
+  color: var(--color-accent2);
+}
+.hljs-variable,
+.hljs-template-variable,
+.hljs-type,
+.hljs-class .hljs-title,
+.hljs-title.class_ {
+  color: var(--color-yellow);
+}
+.hljs-operator,
+.hljs-selector-attr,
+.hljs-selector-pseudo {
+  color: var(--color-pink);
+}
+.hljs-deletion {
+  color: var(--color-red);
+}
+.hljs-emphasis {
+  font-style: italic;
+}
+.hljs-strong {
+  font-weight: 700;
+}
