@@ -30,6 +30,8 @@ export interface SyncPayload {
   session: SyncSessionMeta;
   entries: (RawEntry & { seq?: number })[];
   seqOffset?: number;
+  /** Total entries the client holds for this session (sent with the final chunk). */
+  totalEntries?: number;
   done?: boolean;
 }
 
@@ -103,6 +105,8 @@ export function parseSyncPayload(body: unknown): ValidationResult {
       },
       entries: body.entries as SyncPayload["entries"],
       seqOffset: typeof body.seqOffset === "number" ? body.seqOffset : 0,
+      totalEntries:
+        typeof body.totalEntries === "number" ? Math.max(0, body.totalEntries) : undefined,
       done: body.done === true,
     },
   };
@@ -146,7 +150,47 @@ export interface IngestResult {
   entriesWritten: number;
   entriesReceived: number;
   redactions: number;
+  /** Total entries stored for this session after this chunk. */
+  entryCount: number;
+  /** entryId at the highest stored seq — the client's resume cursor. */
+  lastEntryId: string | null;
   done: boolean;
+}
+
+export interface SyncStatus {
+  exists: boolean;
+  entryCount: number;
+  lastEntryId: string | null;
+  contentHash: string | null;
+  done: boolean;
+}
+
+/**
+ * Server-side cursor for a session, so a client with no local cache (fresh
+ * machine, cleared cache) can still resume incrementally.
+ */
+export async function getSyncStatus(sessionId: string): Promise<SyncStatus> {
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { contentHash: true },
+  });
+  if (!session) {
+    return { exists: false, entryCount: 0, lastEntryId: null, contentHash: null, done: false };
+  }
+
+  const last = await prisma.entry.findFirst({
+    where: { sessionId },
+    orderBy: { seq: "desc" },
+    select: { entryId: true, seq: true },
+  });
+
+  return {
+    exists: true,
+    entryCount: last ? last.seq + 1 : 0,
+    lastEntryId: last?.entryId ?? null,
+    contentHash: session.contentHash,
+    done: true,
+  };
 }
 
 /**
@@ -236,7 +280,8 @@ export async function ingestSession(payload: SyncPayload): Promise<IngestResult>
     },
   });
 
-  // Insert entries in chunks. `skipDuplicates` makes this idempotent.
+  // Insert entries in chunks. `skipDuplicates` makes this idempotent, so an
+  // incremental upload that overlaps the server's existing prefix is safe.
   let written = 0;
   for (let i = 0; i < prepared.length; i += 500) {
     const chunk = prepared.slice(i, i + 500);
@@ -247,7 +292,31 @@ export async function ingestSession(payload: SyncPayload): Promise<IngestResult>
     written += result.count;
   }
 
+  // `seq` is contiguous and 0-based, so the highest seq gives us both the cursor
+  // and the stored count without a COUNT(*).
+  let last = await prisma.entry.findFirst({
+    where: { sessionId: session.id },
+    orderBy: { seq: "desc" },
+    select: { entryId: true, seq: true },
+  });
+  let entryCount = last ? last.seq + 1 : 0;
+
   if (done) {
+    // If the client now holds fewer entries than we do (file truncated or
+    // rewritten), drop the stale tail so the archive matches the source.
+    const total = payload.totalEntries;
+    if (typeof total === "number" && total < entryCount) {
+      await prisma.entry.deleteMany({
+        where: { sessionId: session.id, seq: { gte: total } },
+      });
+      last = await prisma.entry.findFirst({
+        where: { sessionId: session.id },
+        orderBy: { seq: "desc" },
+        select: { entryId: true, seq: true },
+      });
+      entryCount = last ? last.seq + 1 : 0;
+    }
+
     const [messageCount, userMessages] = await Promise.all([
       prisma.entry.count({ where: { sessionId: session.id, type: "message" } }),
       prisma.entry.count({
@@ -260,11 +329,19 @@ export async function ingestSession(payload: SyncPayload): Promise<IngestResult>
       data: {
         messageCount,
         userMessages,
+        entryCount,
+        lastEntryId: last?.entryId ?? null,
         totalTokens: session.stats?.totalTokens ?? undefined,
         totalCost: session.stats?.totalCost ?? undefined,
         leafId: session.leafId ?? undefined,
         syncedAt: now,
       },
+    });
+  } else {
+    // Keep the cursor current even if this sync is interrupted mid-way.
+    await prisma.session.update({
+      where: { id: session.id },
+      data: { entryCount, lastEntryId: last?.entryId ?? null, syncedAt: now },
     });
   }
 
@@ -273,6 +350,8 @@ export async function ingestSession(payload: SyncPayload): Promise<IngestResult>
     entriesWritten: written,
     entriesReceived: prepared.length,
     redactions,
+    entryCount,
+    lastEntryId: last?.entryId ?? null,
     done,
   };
 }

@@ -33,6 +33,8 @@ model Session {
   leafId         String?
   sourceFile     String? // basename of the .jsonl on the syncing machine
   contentHash    String? // hash of the full entry set — used for change detection
+  entryCount     Int      @default(0) // number of stored entries (incremental sync)
+  lastEntryId    String? // entryId at the highest seq — incremental sync cursor
   syncedAt       DateTime @default(now())
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

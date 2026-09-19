@@ -78,5 +78,11 @@ config file is read directly and takes effect immediately after
 | `/sync all <text>` | only sessions whose path contains `<text>` |
 | `/sync status` | print resolved config and server health |
 
+Syncs are **incremental**. Before uploading, the extension asks the server for
+the last entry it holds and sends only what follows — and it caches the last
+uploaded content hash in `~/.cache/querion/`, so an unchanged session skips the
+network entirely. Re-running `/sync all` on an unchanged archive uploads zero
+entries.
+
 Secrets are sanitised and redacted before upload; the server reports how many
 values it redacted.

@@ -7,7 +7,8 @@ tool calls, diffs, images, token cost — from any browser, including your phone
 - **Read on the go.** Mobile-first transcript reader with markdown + syntax highlighting.
 - **One password.** Single-user auth, no accounts, no orgs, no third-party login.
 - **Self-contained.** Next.js + Prisma 7 + Tailwind v4, Postgres (Supabase), deployable on Vercel.
-- **Idempotent sync.** Re-sync as often as you like; entries are keyed and deduplicated.
+- **Incremental sync.** Only new entries are uploaded — re-syncing an untouched session sends nothing at all.
+- **Idempotent.** Entries are keyed by id, so a full re-upload is still safe.
 - **Secret hygiene.** NUL/lone-surrogate sanitisation always on; high-confidence secret redaction on by default.
 
 ---
@@ -36,7 +37,7 @@ tool calls, diffs, images, token cost — from any browser, including your phone
  │  or                │ ─────► │  • Bearer token          │        │ /sessions        │
  │ npm run sync:...   │        │  • sanitize + redact     │  read  │ /sessions/:id    │
  └────────────────────┘        │  • upsert (idempotent)   │ ◄───── │  (auth cookie)   │
-                               │  • store Session + Entry │        └──────────────────┘
+                               │  • incremental: new only │        └──────────────────┘
                                └────────────┬─────────────┘
                                             │ Prisma + pg adapter
                                        ┌────▼─────┐
@@ -215,7 +216,8 @@ All `/api/*` routes require either the auth cookie (browser) or a Bearer token (
 |---|---|---|---|
 | `GET` | `/api/health` | public | DB liveness + latency |
 | `GET`/`HEAD` | `/api/ping` | public | uptime-bot keep-alive; runs a real query |
-| `POST` | `/api/sync` | `Bearer QUERION_SYNC_TOKEN` | ingest a session (chunked, idempotent) |
+| `GET` | `/api/sync/status` | `Bearer` | incremental cursor: `?session=<id>` or `?ids=a,b` |
+| `POST` | `/api/sync` | `Bearer QUERION_SYNC_TOKEN` | ingest entries (chunked, incremental, idempotent) |
 | `GET` | `/api/sessions` | cookie | list/search (`?q=&project=&limit=&offset=`) |
 | `GET` | `/api/sessions/:id` | cookie | session detail: summary + active branch + all entries |
 | `DELETE` | `/api/sessions/:id` | cookie | delete a session (does not touch local `.jsonl`) |
@@ -238,12 +240,33 @@ All `/api/*` routes require either the auth cookie (browser) or a Bearer token (
     "stats": { "messageCount": 42, "userMessages": 3, "totalTokens": 1234, "totalCost": 0.02 }
   },
   "entries": [ { "id": "…", "parentId": "…", "type": "message", "timestamp": "…", "message": { } } ],
+  "totalEntries": 42,
   "done": true
 }
 ```
 
 Large sessions are sent in chunks (≤ ~3 MB each, ≤ 400 entries); the client sets
-`done: true` on the final chunk. Re-sending any chunk is safe.
+`done: true` on the final chunk. `totalEntries` is the client's full entry count:
+when the final chunk reports fewer than the server holds, the server trims the
+stale tail (handles a truncated or rewritten `.jsonl`). Re-sending any chunk is
+safe.
+
+### Incremental sync
+
+Before uploading, a client calls `GET /api/sync/status?session=<id>`:
+
+```json
+{ "ok": true, "exists": true, "entryCount": 120, "lastEntryId": "a1b2c3d4", "contentHash": "…" }
+```
+
+It then uploads only the entries **after** `lastEntryId`. When the server is at
+least as complete as the client, nothing is uploaded. If the cursor is not found
+locally (file rewritten), the client falls back to a full upload — still safe,
+because inserts are keyed on `[sessionId, entryId]`.
+
+`/sync all` fetches cursors in one round-trip via `?ids=a,b,c`. The pi extension
+also keeps a small local cache (`~/.cache/querion/`) so an unchanged session
+skips the network entirely.
 
 ---
 

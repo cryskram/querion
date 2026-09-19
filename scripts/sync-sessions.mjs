@@ -185,7 +185,7 @@ function readSessionFile(path) {
   return { header, entries };
 }
 
-function chunk(entries) {
+function chunk(entries, startSeq = 0) {
   const chunks = [];
   let current = [];
   let size = 0;
@@ -196,11 +196,29 @@ function chunk(entries) {
       current = [];
       size = 0;
     }
-    current.push({ ...entry, seq: index });
+    current.push({ ...entry, seq: startSeq + index });
     size += serialized.length;
   });
   if (current.length) chunks.push(current);
   return chunks.length ? chunks : [[]];
+}
+
+async function fetchServerStatus(config, sessionId) {
+  try {
+    const response = await fetch(
+      `${config.url}/api/sync/status?session=${encodeURIComponent(sessionId)}`,
+      { headers: { Authorization: `Bearer ${config.token}` } },
+    );
+    if (!response.ok) return null;
+    const body = await response.json();
+    return {
+      exists: body.exists === true,
+      entryCount: typeof body.entryCount === "number" ? body.entryCount : 0,
+      lastEntryId: typeof body.lastEntryId === "string" ? body.lastEntryId : null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function push(config, envelope, sourceFile) {
@@ -208,8 +226,24 @@ async function push(config, envelope, sourceFile) {
   const contentHash = createHash("sha256")
     .update(JSON.stringify(envelope.entries))
     .digest("hex");
-  const chunks = chunk(envelope.entries);
+  const total = envelope.entries.length;
+
+  // Incremental: ask the server where it left off, upload only what follows.
+  const server = await fetchServerStatus(config, envelope.header.id);
+  let startIndex = 0;
+  if (server?.exists && server.entryCount > 0) {
+    if (server.entryCount >= total) {
+      startIndex = total;
+    } else if (server.lastEntryId) {
+      const found = envelope.entries.findIndex((entry) => entry.id === server.lastEntryId);
+      startIndex = found >= 0 ? found + 1 : 0;
+    }
+  }
+
+  const pending = envelope.entries.slice(startIndex);
+  const chunks = chunk(pending, startIndex);
   let redactions = 0;
+  let uploaded = 0;
 
   for (let index = 0; index < chunks.length; index += 1) {
     const body = {
@@ -230,6 +264,7 @@ async function push(config, envelope, sourceFile) {
         stats,
       },
       entries: chunks[index],
+      totalEntries: total,
       done: index === chunks.length - 1,
     };
 
@@ -247,9 +282,10 @@ async function push(config, envelope, sourceFile) {
     }
     const result = await response.json().catch(() => null);
     redactions += result?.redactions ?? 0;
+    uploaded += chunks[index].length;
   }
 
-  return { entries: envelope.entries.length, redactions };
+  return { entries: total, uploaded, redactions };
 }
 
 async function main() {
@@ -270,6 +306,7 @@ async function main() {
   console.log(`Syncing ${files.length} session(s) to ${config.url} …`);
   let synced = 0;
   let entries = 0;
+  let uploaded = 0;
   let redactions = 0;
   const failures = [];
 
@@ -283,8 +320,13 @@ async function main() {
       const result = await push(config, envelope, file);
       synced += 1;
       entries += result.entries;
+      uploaded += result.uploaded;
       redactions += result.redactions;
-      process.stdout.write(`  ✓ ${file.replace(homedir(), "~")} (${result.entries} entries)\n`);
+      const detail =
+        result.uploaded < result.entries
+          ? `${result.uploaded} new / ${result.entries} entries`
+          : `${result.entries} entries`;
+      process.stdout.write(`  ✓ ${file.replace(homedir(), "~")} (${detail})\n`);
     } catch (error) {
       failures.push(`${file}: ${error.message}`);
       process.stdout.write(`  ✕ ${file.replace(homedir(), "~")} — ${error.message}\n`);
@@ -293,6 +335,7 @@ async function main() {
 
   console.log(
     `\nDone. ${synced}/${files.length} sessions, ${entries} entries` +
+      (uploaded < entries ? ` (${entries - uploaded} already up to date)` : "") +
       (redactions ? `, ${redactions} secrets redacted` : "") +
       (failures.length ? `, ${failures.length} failed` : ""),
   );

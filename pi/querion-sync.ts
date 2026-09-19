@@ -32,9 +32,16 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const STATUS_KEY = "querion";
@@ -388,7 +395,7 @@ function resolveSessionFiles(query: string, cwd: string, root: string): string[]
   return walkSessionFiles(root).filter((path) => path.toLowerCase().includes(needle));
 }
 
-function chunkEntries(entries: Record<string, unknown>[]) {
+function chunkEntries(entries: Record<string, unknown>[], startSeq = 0) {
   const chunks: Record<string, unknown>[][] = [];
   let current: Record<string, unknown>[] = [];
   let size = 0;
@@ -400,7 +407,7 @@ function chunkEntries(entries: Record<string, unknown>[]) {
       current = [];
       size = 0;
     }
-    current.push({ ...entry, seq: index });
+    current.push({ ...entry, seq: startSeq + index });
     size += serialized.length;
   });
 
@@ -408,20 +415,133 @@ function chunkEntries(entries: Record<string, unknown>[]) {
   return chunks;
 }
 
+interface SyncStatus {
+  exists: boolean;
+  entryCount: number;
+  lastEntryId: string | null;
+  contentHash: string | null;
+}
+
+/**
+ * Ask the server where it left off. Returns null when unreachable so callers can
+ * fall back to a full upload (the server dedupes, so it is still correct).
+ */
+async function fetchServerStatus(
+  config: QuerionConfig,
+  sessionId: string,
+): Promise<SyncStatus | null> {
+  try {
+    const response = await fetch(
+      `${config.url}/api/sync/status?session=${encodeURIComponent(sessionId)}`,
+      {
+        headers: { Authorization: `Bearer ${config.token}` },
+        cache: "no-store",
+      },
+    );
+    if (!response.ok) return null;
+    const body = (await response.json()) as Partial<SyncStatus>;
+    return {
+      exists: body.exists === true,
+      entryCount: typeof body.entryCount === "number" ? body.entryCount : 0,
+      lastEntryId: typeof body.lastEntryId === "string" ? body.lastEntryId : null,
+      contentHash: typeof body.contentHash === "string" ? body.contentHash : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function shortHash(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+/** Local fast-path cache: skip the status round-trip when nothing changed. */
+function cachePath(sessionId: string): string {
+  return join(homedir(), ".cache", "querion", "sessions", `${sessionId}.json`);
+}
+
+function readCache(sessionId: string): { count: number; hash: string } | null {
+  try {
+    const raw = readFileSync(cachePath(sessionId), "utf8");
+    const parsed = JSON.parse(raw) as { count?: number; hash?: string };
+    if (typeof parsed.count === "number" && typeof parsed.hash === "string") {
+      return { count: parsed.count, hash: parsed.hash };
+    }
+  } catch {
+    // No cache yet.
+  }
+  return null;
+}
+
+function writeCache(sessionId: string, count: number, hash: string): void {
+  try {
+    const path = cachePath(sessionId);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, JSON.stringify({ count, hash }), "utf8");
+  } catch {
+    // Cache is best-effort.
+  }
+}
+
+interface PushResult {
+  entries: number;
+  uploaded: number;
+  redactions: number;
+  skipped: boolean;
+}
+
+/**
+ * Incremental upload.
+ *
+ * 1. Hash the local entries; if the cache says nothing changed, stop here.
+ * 2. Ask the server how many entries it has and which `lastEntryId` is last.
+ * 3. Find that id in the local list and upload only what follows it.
+ * 4. Fall back to a full (deduped) upload when the server state is unknown.
+ */
 async function pushSession(
   config: QuerionConfig,
   envelope: SessionEnvelope,
   sourceFile: string | null,
-): Promise<{ entries: number; redactions: number }> {
+): Promise<PushResult> {
   const stats = buildStats(envelope.entries);
-  const hash = createHash("sha256")
-    .update(JSON.stringify(envelope.entries))
-    .digest("hex");
+  const hash = shortHash(JSON.stringify(envelope.entries));
+  const total = envelope.entries.length;
 
-  const chunks = chunkEntries(envelope.entries);
-  if (chunks.length === 0) chunks.push([]);
+  const cached = readCache(envelope.header.id);
+  if (cached && cached.hash === hash && cached.count === total) {
+    return { entries: total, uploaded: 0, redactions: 0, skipped: true };
+  }
+
+  const server = await fetchServerStatus(config, envelope.header.id);
+
+  // Decide the first entry that the server is missing.
+  let startIndex = 0;
+  if (server?.exists && server.entryCount > 0) {
+    if (server.entryCount >= total) {
+      // Server is at least as complete as we are; nothing new to send. Refresh
+      // metadata only.
+      startIndex = total;
+    } else if (server.lastEntryId) {
+      const found = envelope.entries.findIndex(
+        (entry) => entry.id === server.lastEntryId,
+      );
+      // Upload from just after the server's cursor. When the cursor is not found
+      // locally (rewritten file), fall back to a full deduped upload.
+      startIndex = found >= 0 ? found + 1 : 0;
+    }
+  }
+
+  const pending = envelope.entries.slice(startIndex);
+  const chunks = chunkEntries(pending, startIndex);
+  const isDelta = startIndex > 0;
+
+  // A delta with nothing pending still needs one call to refresh session stats.
+  if (chunks.length === 0) {
+    chunks.push([]);
+  }
 
   let redactions = 0;
+  let uploaded = 0;
 
   for (let index = 0; index < chunks.length; index += 1) {
     const isLast = index === chunks.length - 1;
@@ -448,6 +568,8 @@ async function pushSession(
         },
       },
       entries: chunks[index],
+      // `seqOffset` is encoded in each entry's `seq` already.
+      totalEntries: total,
       done: isLast,
     };
 
@@ -473,9 +595,17 @@ async function pushSession(
       redactions?: number;
     } | null;
     redactions += result?.redactions ?? 0;
+    uploaded += chunks[index].length;
   }
 
-  return { entries: envelope.entries.length, redactions };
+  writeCache(envelope.header.id, total, hash);
+
+  return {
+    entries: total,
+    uploaded: isDelta ? uploaded : total,
+    redactions,
+    skipped: false,
+  };
 }
 
 export default function (pi: ExtensionAPI) {
@@ -547,6 +677,7 @@ export default function (pi: ExtensionAPI) {
 
         let synced = 0;
         let entries = 0;
+        let uploaded = 0;
         let redactions = 0;
         const failures: string[] = [];
 
@@ -567,6 +698,7 @@ export default function (pi: ExtensionAPI) {
             const result = await pushSession(config, envelope, file);
             synced += 1;
             entries += result.entries;
+            uploaded += result.uploaded;
             redactions += result.redactions;
           } catch (error) {
             failures.push(`${file} (${error instanceof Error ? error.message : String(error)})`);
@@ -576,6 +708,7 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.setStatus(STATUS_KEY, undefined);
         ctx.ui.notify(
           `Querion: synced ${synced}/${files.length} sessions · ${entries} entries` +
+            `${uploaded < entries ? ` (${entries - uploaded} already up to date)` : ""}` +
             `${redactions > 0 ? ` · ${redactions} secrets redacted` : ""}` +
             `${failures.length ? ` · ${failures.length} failed` : ""}`,
           failures.length ? "warning" : "info",
@@ -625,8 +758,10 @@ export default function (pi: ExtensionAPI) {
           const result = await pushSession(config, envelope, file);
           ctx.ui.setStatus(STATUS_KEY, undefined);
           ctx.ui.notify(
-            `Querion: synced ${envelope.header.id} · ${result.entries} entries` +
-              `${result.redactions > 0 ? ` · ${result.redactions} secrets redacted` : ""}`,
+            result.skipped
+              ? `Querion: ${envelope.header.id} already up to date (${result.entries} entries).`
+              : `Querion: synced ${envelope.header.id} · ${result.uploaded} new of ${result.entries} entries` +
+                  `${result.redactions > 0 ? ` · ${result.redactions} secrets redacted` : ""}`,
             "info",
           );
         } catch (error) {
@@ -672,8 +807,10 @@ export default function (pi: ExtensionAPI) {
         const result = await pushSession(config, envelope, sessionFile ?? null);
         ctx.ui.setStatus(STATUS_KEY, undefined);
         ctx.ui.notify(
-          `Querion: synced ${result.entries} entries` +
-            `${result.redactions > 0 ? ` · ${result.redactions} secrets redacted` : ""} → ${config.url}`,
+          result.skipped
+            ? `Querion: already up to date (${result.entries} entries).`
+            : `Querion: synced ${result.uploaded} new of ${result.entries} entries` +
+                `${result.redactions > 0 ? ` · ${result.redactions} secrets redacted` : ""} → ${config.url}`,
           "info",
         );
       } catch (error) {
